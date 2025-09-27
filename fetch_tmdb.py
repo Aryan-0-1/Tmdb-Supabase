@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 from supabase import create_client, Client
 
 # -------------------------
@@ -12,7 +13,35 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -------------------------
-# HELPERS
+# RETRY CONFIG
+# -------------------------
+MAX_RETRIES = 5        # Maximum number of retries per request
+RETRY_DELAY = 5        # Seconds to wait before retrying
+
+# -------------------------
+# HELPER FUNCTION WITH RETRY
+# -------------------------
+def safe_request(url):
+    """Perform GET request with retry if fails"""
+    retries = 0
+    while retries < MAX_RETRIES:
+        try:
+            response = requests.get(url)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Request failed (status {response.status_code}). Retrying in {RETRY_DELAY}s...")
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}. Retrying in {RETRY_DELAY}s...")
+
+        retries += 1
+        time.sleep(RETRY_DELAY)
+
+    print(f"Failed after {MAX_RETRIES} retries. Skipping URL: {url}")
+    return None
+
+# -------------------------
+# FETCH FUNCTIONS
 # -------------------------
 def fetch_movies(year, region, page=1):
     """Fetch movies for a given year and region"""
@@ -24,18 +53,21 @@ def fetch_movies(year, region, page=1):
         f"&with_original_language=hi|en"
         f"&page={page}"
     )
-    res = requests.get(url).json()
-    return res
+    return safe_request(url)
 
 def fetch_movie_details(movie_id):
     """Fetch full movie details, credits, videos, external IDs"""
-    details = requests.get(
-        f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,external_ids,keywords"
-    ).json()
-    return details
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,external_ids,keywords"
+    return safe_request(url)
 
+# -------------------------
+# DATA EXTRACTION
+# -------------------------
 def extract_data(movie):
     """Transform raw TMDb movie into our schema"""
+    if not movie:
+        return None
+
     cast = [c["name"] for c in movie.get("credits", {}).get("cast", [])[:5]]
     genres = [g["name"] for g in movie.get("genres", [])]
     trailer = None
@@ -56,12 +88,12 @@ def extract_data(movie):
         "genres": genres,
         "trailer": trailer,
         "tags": [k["name"] for k in movie.get("keywords", {}).get("keywords", [])],
-        "awards": None,  # TMDb doesn’t provide awards data
-        "language": movie.get("original_language")
+        "awards": None,  # TMDb does not provide awards
+        "language": movie.get("original_language")  # NEW FIELD
     }
 
 # -------------------------
-# MAIN
+# MAIN FUNCTION
 # -------------------------
 def main():
     year = 2024
@@ -71,6 +103,9 @@ def main():
         page = 1
         while True:
             data = fetch_movies(year, region, page)
+            if not data or "results" not in data:
+                break
+
             results = data.get("results", [])
             if not results:
                 break
@@ -78,9 +113,9 @@ def main():
             for movie in results:
                 details = fetch_movie_details(movie["id"])
                 record = extract_data(details)
-
-                # Insert or update into Supabase
-                supabase.table("movies").upsert(record).execute()
+                if record:
+                    supabase.table("movies").upsert(record).execute()
+                    print(f"Inserted/Updated: {record['title']}")
 
             if page >= data.get("total_pages", 1):
                 break
