@@ -57,6 +57,7 @@ def extract_data(movie):
         "trailer": trailer,
         "tags": [k["name"] for k in movie.get("keywords", {}).get("keywords", [])],
         "awards": None,  # TMDb doesn’t provide awards data
+        "language": movie.get("original_language")
     }
 
 # -------------------------
