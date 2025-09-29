@@ -17,6 +17,28 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # -------------------------
 MAX_RETRIES = 5        # Maximum number of retries per request
 RETRY_DELAY = 5        # Seconds to wait before retrying
+DAILY_LIMIT = 1000   # TMDb free quota
+
+# -------------------------
+# PROGRESS HELPERS
+# -------------------------
+def get_progress():
+    res = supabase.table("fetch_progress").select("*").eq("id", 1).execute()
+    if res.data:
+        return res.data[0]["last_year"], res.data[0]["last_region"], res.data[0]["last_page"]
+    else:
+        # initialize if not exists
+        supabase.table("fetch_progress").insert(
+            {"id": 1, "last_year": 2000, "last_region": "US", "last_page": 0}
+        ).execute()
+        return 2000, "US", 0
+
+def save_progress(year, region, page):
+    supabase.table("fetch_progress").update(
+        {"last_year": year, "last_region": region, "last_page": page}
+    ).eq("id", 1).execute()
+
+
 
 # -------------------------
 # HELPER FUNCTION WITH RETRY
@@ -97,12 +119,21 @@ def extract_data(movie):
 # -------------------------
 def main():
     year = 2024
+    current_year, current_region, current_page = get_progress()
     regions = ["US", "IN"]  # Hollywood (US), Bollywood (India)
+    requests_made = 0
 
     for region in regions:
-        page = 1
+        start_page = current_page + 1 if (year == current_year and region == current_region) else 1
+        # page = 1
+        page = start_page
         while True:
+            if requests_made >= DAILY_LIMIT:
+                    print("Reached daily API limit. Saving progress and exiting.")
+                    save_progress(year, region, page - 1)
+                    return
             data = fetch_movies(year, region, page)
+            requests_made += 1
             if not data or "results" not in data:
                 break
 
@@ -112,14 +143,24 @@ def main():
 
             for movie in results:
                 details = fetch_movie_details(movie["id"])
+                requests_made += 1
                 record = extract_data(details)
                 if record:
-                    supabase.table("movies").upsert(record).execute()
+                    supabase.table("movies").upsert(record, on_conflict=["tmdb_id"]).execute()
                     print(f"Inserted/Updated: {record['title']}")
+                if requests_made >= DAILY_LIMIT:
+                        print("Reached daily API limit inside details. Saving progress and exiting.")
+                        save_progress(year, region, page)
+                        return
 
             if page >= data.get("total_pages", 1):
                 break
             page += 1
+        # reset page tracker after finishing a region
+        current_page = 0
+        
+    print("All movies fetched!")
+    save_progress(2025, "US", 0)
 
 if __name__ == "__main__":
     main()
