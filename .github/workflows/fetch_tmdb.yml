@@ -2,7 +2,7 @@ name: Fetch TMDB Movies
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # Runs daily at 6 hrs, 4 times a day
+    - cron: "*/30 * * * *"   # Runs daily at half hrs
   workflow_dispatch:       # Allow manual trigger
 
 jobs:
