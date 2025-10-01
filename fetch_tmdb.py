@@ -25,7 +25,7 @@ DAILY_LIMIT = 1000   # TMDb free quota
 def get_progress(supabase):
     res = supabase.table("fetch_progress").select("*").eq("id", 1).execute()
     if res.data:
-        return res.data[0]["last_year"], res.data[0]["last_region"], res.data[0]["last_page"]
+        return res.data[0]["last_year"], res.data[0]["region"], res.data[0]["last_page"]
     else:
         # initialize if not exists
         supabase.table("fetch_progress").insert(
