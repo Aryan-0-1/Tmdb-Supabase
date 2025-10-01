@@ -22,7 +22,7 @@ DAILY_LIMIT = 1000   # TMDb free quota
 # -------------------------
 # PROGRESS HELPERS
 # -------------------------
-def get_progress():
+def get_progress(supabase):
     res = supabase.table("fetch_progress").select("*").eq("id", 1).execute()
     if res.data:
         return res.data[0]["last_year"], res.data[0]["last_region"], res.data[0]["last_page"]
@@ -33,7 +33,7 @@ def get_progress():
         ).execute()
         return 2000, "US", 0
 
-def save_progress(year, region, page):
+def save_progress(supabase,year, region, page):
     supabase.table("fetch_progress").update(
         {"last_year": year, "last_region": region, "last_page": page}
     ).eq("id", 1).execute()
@@ -119,10 +119,10 @@ def extract_data(movie):
 # -------------------------
 def main():
     # year = 2024
-    current_year, current_region, current_page = get_progress()
+    current_year, current_region, current_page = get_progress(supabase)
     regions = ["US", "IN"]  # Hollywood (US), Bollywood (India)
     requests_made = 0
-    for year in range(current_year, 2023):  # fetch from 2000 → 2024
+    for year in range(current_year, 2023):  # fetch from 2000 → 2023
         for region in regions:
             start_page = current_page + 1 if (year == current_year and region == current_region) else 1
             # page = 1
