@@ -2,12 +2,13 @@ name: Fetch TMDB Movies
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # Runs daily at half hrs
+    - cron: "0 0 * * *"   # Runs daily at half hrs
   workflow_dispatch:       # Allow manual trigger
 
 jobs:
   fetch-and-upload:
     runs-on: ubuntu-latest
+    timeout-minutes: 360   # allow up to 6 hours runtime
 
     steps:
       - name: Checkout repo
