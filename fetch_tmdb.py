@@ -29,13 +29,13 @@ def get_progress(supabase):
     else:
         # initialize if not exists
         supabase.table("fetch_progress").insert(
-            {"id": 1, "last_year": 2000, "last_region": "US", "last_page": 0}
+            {"id": 1, "last_year": 2000, "region": "US", "last_page": 0}
         ).execute()
         return 2000, "US", 0
 
 def save_progress(supabase,year, region, page):
     supabase.table("fetch_progress").upsert({
-            "last_year": year, "last_region": region, "last_page": page
+            "last_year": year, "region": region, "last_page": page
         }, on_conflict=["region"]).execute()
 
 
