@@ -34,9 +34,9 @@ def get_progress(supabase):
         return 2000, "US", 0
 
 def save_progress(supabase,year, region, page):
-    supabase.table("fetch_progress").update(
-        {"last_year": year, "last_region": region, "last_page": page}
-    ).eq("id", 1).execute()
+    supabase.table("fetch_progress").upsert({
+            "last_year": year, "last_region": region, "last_page": page
+        }, on_conflict=["region"]).execute()
 
 
 
@@ -150,7 +150,7 @@ def main():
                         print(f"Inserted/Updated: {record['title']}")
                     if requests_made >= DAILY_LIMIT:
                             print("Reached daily API limit inside details. Saving progress and exiting.")
-                            save_progress(year, region, page)
+                            save_progress(supabase,year, region, page)
                             return
     
                 if page >= data.get("total_pages", 1):
