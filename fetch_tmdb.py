@@ -54,6 +54,17 @@ def safe_request(url):
     while retries < MAX_RETRIES:
         try:
             response = requests.get(url)
+            # --------------------------
+            # Handle rate-limiting (429)
+            # --------------------------
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", RETRY_DELAY))
+                print(f"429 Too Many Requests. Waiting for {retry_after} seconds before retrying...")
+                time.sleep(retry_after)
+                retries += 1
+                continue
+
+            
             if response.status_code == 200:
                 # Capture TMDb quota headers
                 if "X-RateLimit-Remaining" in response.headers:
