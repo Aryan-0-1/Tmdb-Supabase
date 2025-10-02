@@ -36,7 +36,7 @@ def get_progress(supabase):
 def save_progress(supabase,year, region, page):
     supabase.table("fetch_progress").upsert({
             "last_year": year, "region": region, "last_page": page
-        }, on_conflict=["region"]).execute()
+        }, on_conflict=["id"]).execute()
 
 
 
@@ -122,7 +122,7 @@ def main():
     current_year, current_region, current_page = get_progress(supabase)
     regions = ["US", "IN"]  # Hollywood (US), Bollywood (India)
     requests_made = 0
-    for year in range(current_year, 2023):  # fetch from 2000 → 2023
+    for year in range(current_year, 2024):  # fetch from 2000 → 2023
         for region in regions:
             start_page = current_page + 1 if (year == current_year and region == current_region) else 1
             # page = 1
@@ -130,7 +130,7 @@ def main():
             while True:
                 if requests_made >= DAILY_LIMIT:
                         print("Reached daily API limit. Saving progress and exiting.")
-                        save_progress(year, region, page - 1)
+                        save_progress(supabase, year, region, page - 1)
                         return
                 data = fetch_movies(year, region, page)
                 requests_made += 1
@@ -160,7 +160,7 @@ def main():
             current_page = 0
             
     print("All movies fetched!")
-    save_progress(2025, "US", 0)
+    save_progress(supabase, 2025, "US", 0)
 
 if __name__ == "__main__":
     main()
