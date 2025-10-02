@@ -17,7 +17,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # -------------------------
 MAX_RETRIES = 5        # Maximum number of retries per request
 RETRY_DELAY = 5        # Seconds to wait before retrying
-# DAILY_LIMIT = 1000   # TMDb free quota
+BATCH_SIZE = 50        # Number of records per upsert batch
 
 # -------------------------
 # PROGRESS HELPERS
@@ -136,6 +136,28 @@ def extract_data(movie):
     }
 
 # -------------------------
+# BATCH UPSERT WITH RETRY
+# -------------------------
+def safe_upsert(table, records, batch_size=BATCH_SIZE, retries=MAX_RETRIES, delay=RETRY_DELAY):
+    total = len(records)
+    for start in range(0, total, batch_size):
+        batch = records[start:start + batch_size]
+        attempt = 0
+        while attempt < retries:
+            try:
+                table.upsert(batch, on_conflict=["tmdb_id"]).execute()
+                print(f"Upserted batch {start}-{start + len(batch) - 1}")
+                break
+            except Exception as e:
+                attempt += 1
+                print(f"Batch {start}-{start + len(batch) - 1} failed (attempt {attempt}/{retries}): {e}")
+                time.sleep(delay)
+        else:
+            print(f"Failed to upsert batch {start}-{start + len(batch) - 1} after {retries} retries.")
+
+
+
+# -------------------------
 # MAIN FUNCTION
 # -------------------------
 def main():
@@ -143,11 +165,13 @@ def main():
     current_year, current_region, current_page = get_progress(supabase)
     regions = ["US", "IN"]  # Hollywood (US), Bollywood (India)
     requests_made = 0
+    
     for year in range(current_year, 2024):  # fetch from 2000 → 2023
         for region in regions:
             start_page = current_page + 1 if (year == current_year and region == current_region) else 1
             # page = 1
             page = start_page
+            
             while True:
                 # Stop if no requests left
                 if remaining_requests is not None and remaining_requests <= 1:
@@ -163,7 +187,8 @@ def main():
                 results = data.get("results", [])
                 if not results:
                     break
-    
+
+                records_to_upsert = []
                 for movie in results:
                     # Again check before details request
                     if remaining_requests is not None and remaining_requests <= 1:
@@ -175,9 +200,10 @@ def main():
                     requests_made += 1
                     record = extract_data(details)
                     if record:
-                        supabase.table("movies").upsert(record, on_conflict=["tmdb_id"]).execute()
-                        print(f"Inserted/Updated: {record['title']}")
-    
+                        records_to_upsert.append(record)
+                # Batch upsert
+                if records_to_upsert:
+                    safe_upsert(supabase.table("movies"), records_to_upsert)
                 if page >= data.get("total_pages", 1):
                     break
                 page += 1
