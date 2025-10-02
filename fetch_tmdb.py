@@ -17,7 +17,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # -------------------------
 MAX_RETRIES = 5        # Maximum number of retries per request
 RETRY_DELAY = 5        # Seconds to wait before retrying
-DAILY_LIMIT = 1000   # TMDb free quota
+# DAILY_LIMIT = 1000   # TMDb free quota
 
 # -------------------------
 # PROGRESS HELPERS
@@ -44,13 +44,22 @@ def save_progress(supabase,year, region, page):
 # -------------------------
 # HELPER FUNCTION WITH RETRY
 # -------------------------
+remaining_requests = None
+daily_limit = None
+
 def safe_request(url):
     """Perform GET request with retry if fails"""
+    global remaining_requests, daily_limit
     retries = 0
     while retries < MAX_RETRIES:
         try:
             response = requests.get(url)
             if response.status_code == 200:
+                # Capture TMDb quota headers
+                if "X-RateLimit-Remaining" in response.headers:
+                    remaining_requests = int(response.headers["X-RateLimit-Remaining"])
+                if "X-RateLimit-Limit" in response.headers:
+                    daily_limit = int(response.headers["X-RateLimit-Limit"])
                 return response.json()
             else:
                 print(f"Request failed (status {response.status_code}). Retrying in {RETRY_DELAY}s...")
@@ -129,10 +138,12 @@ def main():
             # page = 1
             page = start_page
             while True:
-                if requests_made >= DAILY_LIMIT:
-                        print("Reached daily API limit. Saving progress and exiting.")
-                        save_progress(supabase, year, region, page - 1)
-                        return
+                # Stop if no requests left
+                if remaining_requests is not None and remaining_requests <= 1:
+                    print("Reached TMDb daily API limit (from headers). Saving progress and exiting.")
+                    save_progress(supabase, year, region, page - 1)
+                    return
+                    
                 data = fetch_movies(year, region, page)
                 requests_made += 1
                 if not data or "results" not in data:
@@ -143,16 +154,18 @@ def main():
                     break
     
                 for movie in results:
+                    # Again check before details request
+                    if remaining_requests is not None and remaining_requests <= 1:
+                        print("Reached TMDb daily API limit inside details. Saving progress and exiting.")
+                        save_progress(supabase, year, region, page)
+                        return
+                        
                     details = fetch_movie_details(movie["id"])
                     requests_made += 1
                     record = extract_data(details)
                     if record:
                         supabase.table("movies").upsert(record, on_conflict=["tmdb_id"]).execute()
                         print(f"Inserted/Updated: {record['title']}")
-                    if requests_made >= DAILY_LIMIT:
-                            print("Reached daily API limit inside details. Saving progress and exiting.")
-                            save_progress(supabase,year, region, page)
-                            return
     
                 if page >= data.get("total_pages", 1):
                     break
