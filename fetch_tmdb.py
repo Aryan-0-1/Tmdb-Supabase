@@ -35,6 +35,7 @@ def get_progress(supabase):
 
 def save_progress(supabase,year, region, page):
     supabase.table("fetch_progress").upsert({
+        "id": 1,
             "last_year": year, "region": region, "last_page": page
         }, on_conflict=["id"]).execute()
 
