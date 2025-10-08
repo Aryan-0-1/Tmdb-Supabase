@@ -161,7 +161,6 @@ def safe_upsert(table, records, batch_size=BATCH_SIZE, retries=MAX_RETRIES, dela
 # MAIN FUNCTION
 # -------------------------
 def main():
-    # year = 2024
     current_year, current_region, current_page = get_progress(supabase)
     regions = ["US", "IN"]  # Hollywood (US), Bollywood (India)
     requests_made = 0
@@ -169,23 +168,24 @@ def main():
     for year in range(current_year, 2024):  # fetch from 2000 → 2023
         for region in regions:
             start_page = current_page + 1 if (year == current_year and region == current_region) else 1
-            # page = 1
             page = start_page
-            
+
             while True:
-                # Stop if no requests left
+                # Stop if API quota exhausted
                 if remaining_requests is not None and remaining_requests <= 1:
                     print("Reached TMDb daily API limit (from headers). Saving progress and exiting.")
                     save_progress(supabase, year, region, page - 1)
                     return
-                    
+                
                 data = fetch_movies(year, region, page)
                 requests_made += 1
                 if not data or "results" not in data:
+                    print(f"No data returned for {year}-{region}, page {page}")
                     break
-    
+
                 results = data.get("results", [])
                 if not results:
+                    print(f"No more results for {year}-{region}")
                     break
 
                 records_to_upsert = []
@@ -201,17 +201,27 @@ def main():
                     record = extract_data(details)
                     if record:
                         records_to_upsert.append(record)
+
                 # Batch upsert
                 if records_to_upsert:
                     safe_upsert(supabase.table("movies"), records_to_upsert)
+
+                # ✅ Save progress after each page
+                save_progress(supabase, year, region, page)
+                print(f"Progress saved → Year: {year}, Region: {region}, Page: {page}")
+
+                # Stop if last page
                 if page >= data.get("total_pages", 1):
                     break
+
                 page += 1
-            # reset page tracker after finishing a region
+
+            # Reset current page after finishing a region
             current_page = 0
-            
-    print("All movies fetched!")
+
+    print("All movies fetched successfully!")
     save_progress(supabase, 2025, "US", 0)
+
 
 if __name__ == "__main__":
     main()
