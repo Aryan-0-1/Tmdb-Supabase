@@ -165,7 +165,7 @@ def main():
     regions = ["US", "IN"]  # Hollywood (US), Bollywood (India)
     requests_made = 0
     
-    for year in range(current_year, 2024):  # fetch from 2000 → 2023
+    for year in range(current_year, 2026):  # fetch from 2000 → 2025
         for region in regions:
             start_page = current_page + 1 if (year == current_year and region == current_region) else 1
             page = start_page
